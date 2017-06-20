@@ -1,5 +1,7 @@
 const phantom = require('phantom');
 const moment = require('moment');
+const jimp = require("jimp");
+
 
 const argv = require('yargs').argv;
 
@@ -14,6 +16,17 @@ const month = tenancyDate.month();
 const day = tenancyDate.date();
 
 
+function printTimeOverImage(dataImageName) {
+    let imageToWriteOver = null;
+    return jimp.read(dataImageName).then(function (image) {
+        imageToWriteOver = image;
+        return jimp.loadFont(jimp.FONT_SANS_16_BLACK);
+    }).then(function (loadedFont) {
+        imageToWriteOver.print(loadedFont, 10, 10, moment().format()).write(dataImageName);
+    }).catch(function(error){
+        console.error("failed toprintTimeOverImage(" + dataImageName +")", error);
+    });
+}
 async function dps(phantomInstance) {
     const page = await phantomInstance.createPage();
     const status = await page.open('https://www.depositprotection.com/is-my-deposit-protected');
@@ -60,13 +73,14 @@ async function dps(phantomInstance) {
         return 'success';
     }, depositAmount);
 
-    let dataRenderResult = await page.render('data-dps-' + imageSuffix).then(function (input) {
+    let dataImageName = 'data-dps-' + imageSuffix;
+    let dataRenderResult = await page.render(dataImageName).then(function (input) {
         return input
     });
-    console.log(dataRenderResult ? 'File created at [' + 'data-dps-' + imageSuffix + ']' : ' failed to screenshot DPS');
+    console.log(dataRenderResult ? 'File created at [' + dataImageName + ']' : ' failed to screenshot DPS');
+    await printTimeOverImage(dataImageName);
+
     console.log('Invoking Check for deposit');
-
-
     let clickResult = await page.evaluate(function () {
         var submittor = $('#Body_DepositFinder_CheckButton');
         console.log(submittor);
@@ -88,11 +102,11 @@ async function dps(phantomInstance) {
         await sleep(500);
         waitLoops++;
     }
-
-    let checkRenderResult = await page.render('check-dps-' + imageSuffix).then(function (input) {
+    let checkImageName = 'check-dps-' + imageSuffix;
+    let checkRenderResult = await page.render(checkImageName).then(function (input) {
         return input
     });
-
+    await printTimeOverImage(checkImageName);
     console.log(checkRenderResult ? 'File created at [' + 'check-dps-' + imageSuffix + ']' : ' failed to screenshot DPS')
     return "OK"
 }
@@ -154,10 +168,13 @@ async function tds(phantomInstance) {
         return 'success';
     }, tenancyDate.format('DD/MM/YYYY'));
 
-    let dataRenderResult = await page.render('data-tds-' + imageSuffix).then(function (input) {
+    let dataImageName = 'data-tds-' + imageSuffix;
+    let dataRenderResult = await page.render(dataImageName).then(function (input) {
         return input
     });
-    console.log(dataRenderResult ? 'File created at [' + 'data-tds-' + imageSuffix + ']' : ' failed to screenshot TDS');
+
+    await printTimeOverImage(dataImageName);
+    console.log(dataRenderResult ? 'File created at [' + dataImageName + ']' : ' failed to screenshot TDS');
 
 
     page.on('onResourceRequested', function (requestData) {
@@ -189,9 +206,11 @@ async function tds(phantomInstance) {
 
     console.log(hasLoaded ? "successfully loaded deposit check" : "failed to load deposit check");
 
-    let checkRenderResult = await page.render('check-tds-' + imageSuffix).then(function (input) {
+    let checkImageName = 'check-tds-' + imageSuffix;
+    let checkRenderResult = await page.render(checkImageName).then(function (input) {
         return input
     });
+    await printTimeOverImage(checkImageName);
     console.log(checkRenderResult ? 'File created at [' + 'check-tds-' + imageSuffix + ']' : ' failed to screenshot TDS');
 
 
