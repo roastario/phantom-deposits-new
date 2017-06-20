@@ -5,13 +5,13 @@ const argv = require('yargs').argv;
 
 const surname = argv.surname;
 const imageSuffix = argv.image;
-const tenancyDate = moment(argv.tenancyStart, 'YYYY/MM/DD');
+const tenancyDate = moment(argv.tenancyDate, 'YYYY-MM-DD');
 const postCode = argv.postCode;
 const depositAmount = argv.depositAmount;
 
 const year = tenancyDate.year();
 const month = tenancyDate.month();
-const day = tenancyDate.day();
+const day = tenancyDate.date();
 
 
 async function dps(phantomInstance) {
@@ -22,17 +22,6 @@ async function dps(phantomInstance) {
         console.log(' failed to load dps ');
         return;
     }
-
-    page.on('consoleMessage', function(msg, lineNum, sourceId){
-        console.log('CONSOLE: ' + msg + ' (from line #' + lineNum + ' in "' + sourceId + '")');
-    });
-
-    page.on('navigationRequested', function(url, type, willNavigate, main){
-        console.log('Trying to navigate to: ' + url);
-        console.log('Caused by: ' + type);
-        console.log('Will actually navigate: ' + willNavigate);
-        console.log('Sent from the page\'s main frame: ' + main);
-    });
 
     let viewPort = await page.property('viewportSize');
     console.log('current viewport has size of: ' + JSON.stringify(viewPort) + ' setting to 1280x720');
@@ -50,7 +39,7 @@ async function dps(phantomInstance) {
     console.log('populating tenancy start');
     let tenancyStartResult = await page.evaluate(function (day, month, year) {
         const monthDropDown = document.querySelector('#Body_DepositFinder_DepositSearchPanels_ctl00_MonthsList');
-        monthDropDown.value = month;
+        monthDropDown.value = month + 1;
 
         const yearDropDown = document.querySelector('#Body_DepositFinder_DepositSearchPanels_ctl00_YearsList');
         yearDropDown.value = year;
@@ -77,19 +66,28 @@ async function dps(phantomInstance) {
     console.log(dataRenderResult ? 'File created at [' + 'data-dps-' + imageSuffix + ']' : ' failed to screenshot DPS');
     console.log('Invoking Check for deposit');
 
-    let checkResult = await page.evaluate(function () {
-        var form = document.querySelector("form");
-        form.submit();
-        var isLoaded = false;
-        const startTime = new Date().getTime();
-        while ((new Date().getTime() - startTime) < 5000 && !isLoaded) {
+
+    let clickResult = await page.evaluate(function () {
+        var submittor = $('#Body_DepositFinder_CheckButton');
+        console.log(submittor);
+        submittor.click();
+        return "clicked";
+    });
+
+    let loaded = false;
+    await sleep(500);
+
+    let waitLoops = 0;
+    while (!loaded && waitLoops < 10) {
+        loaded = await page.evaluate(function () {
             const found = document.querySelector('.alert.information');
             const notfound = document.querySelector('.alert.warning');
-            isLoaded = (found || notfound);
-            console.log(isLoaded ? "did not find " : " found");
-        }
-        return isLoaded;
-    });
+            console.log((found || notfound));
+            return (found || notfound);
+        });
+        await sleep(500);
+        waitLoops++;
+    }
 
     let checkRenderResult = await page.render('check-dps-' + imageSuffix).then(function (input) {
         return input
@@ -99,10 +97,116 @@ async function dps(phantomInstance) {
     return "OK"
 }
 
-(async function () {
-    const instance = await phantom.create();
 
-    let result = await dps(instance);
-    console.log(result);
-    await instance.exit();
+async function tds(phantomInstance) {
+
+    let page = await phantomInstance.createPage();
+    const status = await page.open('https://www.thedisputeservice.co.uk/is-my-deposit-protected.html');
+    console.log("attempting to expand deposit information box");
+    let expander = await page.evaluate(function () {
+        var submittor = $('#lookup_button');
+        submittor.click();
+        return "clicked";
+    });
+    let isExpanded = false;
+    let waitLoops = 0;
+    await sleep(100);
+    while (!isExpanded && waitLoops < 10) {
+        isExpanded = await page.evaluate(function () {
+            const popup = document.querySelector('#lookup_popup');
+            return !!(popup || false);
+        });
+        await sleep(100);
+        waitLoops++;
+    }
+
+    if (!isExpanded) {
+        console.log("failed to expand deposit information box");
+    } else {
+        console.log("was able to expand the deposit information box");
+    }
+
+    console.log("populating deposit amount");
+    let depositAmountResult = await page.evaluate(function (depositAmount) {
+        const depositAmountField = $("input[name='deposit_amount']");
+        depositAmountField.val(depositAmount);
+        return 'success';
+    }, depositAmount);
+
+    console.log("populating Tenancy Postcode");
+    let postCodeResult = await page.evaluate(function (postCode) {
+        const postCodeField = $("input[name='postcode']");
+        postCodeField.val(postCode);
+        return 'success';
+    }, postCode);
+
+    console.log("populating Tenancy Surname");
+    let surnameResult = await page.evaluate(function (surname) {
+        const postCodeField = $("input[name='surname']");
+        postCodeField.val(surname);
+        return 'success';
+    }, surname);
+
+    console.log("populating Tenancy Start Date");
+    let dateResult = await page.evaluate(function (date) {
+        const postCodeField = $("input[name='tenancy_start_date']");
+        postCodeField.val(date);
+        return 'success';
+    }, tenancyDate.format('DD/MM/YYYY'));
+
+    let dataRenderResult = await page.render('data-tds-' + imageSuffix).then(function (input) {
+        return input
+    });
+    console.log(dataRenderResult ? 'File created at [' + 'data-tds-' + imageSuffix + ']' : ' failed to screenshot TDS');
+
+
+    page.on('onResourceRequested', function (requestData) {
+        console.info('Requesting', requestData.url)
+    });
+
+    page.on('onResourceRecieved', function (response) {
+        console.info('Requesting', response.url)
+    });
+
+    let clickResult = await page.evaluate(function () {
+        var submittor = $("input[type='submit']");
+        submittor.click();
+        return "clicked";
+    });
+
+    let hasLoaded = false;
+    waitLoops = 0;
+    while (!hasLoaded && waitLoops < 20) {
+        hasLoaded = await page.evaluate(function () {
+            var notfound = $('div.notification_message');
+            var found = $('fieldset.protected_box.top_protected_box');
+            console.log(found.length + ", " + notfound.length + " -> " + !(found.length || notfound));
+            return !(found.length || notfound);
+        });
+        await sleep(1000);
+        waitLoops++;
+    }
+
+    console.log(hasLoaded ? "successfully loaded deposit check" : "failed to load deposit check");
+
+    let checkRenderResult = await page.render('check-tds-' + imageSuffix).then(function (input) {
+        return input
+    });
+    console.log(checkRenderResult ? 'File created at [' + 'check-tds-' + imageSuffix + ']' : ' failed to screenshot TDS');
+
+
+    return "OK";
+
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+(async function () {
+    const instance1 = await phantom.create();
+    const instance2 = await phantom.create();
+    let results = await Promise.all([tds(instance1), dps(instance2)])
+    console.log(results);
+    let exitResult = await instance1.exit();
 }());
