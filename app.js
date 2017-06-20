@@ -206,7 +206,7 @@ function sleep(ms) {
 (async function () {
     const instance1 = await phantom.create();
     const instance2 = await phantom.create();
-    let results = await Promise.all([tds(instance1), dps(instance2)])
+    let results = await Promise.all([tds(instance1), dps(instance2)]);
     console.log(results);
-    let exitResult = await instance1.exit();
+    let exitResult = await Promise.all([instance1.exit(), instance2.exit()]);
 }());
