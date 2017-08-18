@@ -60,7 +60,7 @@ async function mdps(phantomInstance) {
                 const notfound = document.querySelector('.DepositNotFound');
                 return !!(found || notfound) ? found ? "found" : "not found" : "";
             });
-            console.log("myDepositsCheckLoaded -> " + JSON.stringify(loaded))
+            console.log("mydpsCheck -> " + (!!loaded ? loaded : "waiting"))
             await sleep(500);
             waitLoops++;
         }
@@ -92,7 +92,7 @@ async function mdps(phantomInstance) {
     console.log('populating mydeposits tenancy start');
     let tenancyStartResult = await page.evaluate(function (day, month, year) {
         const monthDropDown = document.querySelector('#ddlDepositDateMonth');
-        monthDropDown.value = month;
+        monthDropDown.value = month + 1;
 
         const yearDropDown = document.querySelector('#ddlDepositDateYear');
         yearDropDown.value = year;
@@ -138,6 +138,24 @@ async function mdps(phantomInstance) {
 }
 
 async function dps(phantomInstance) {
+
+    async function waitForCheckToLoad() {
+        let loaded = false;
+        let waitLoops = 0;
+        while (!loaded && waitLoops < 50) {
+            loaded = await page.evaluate(function () {
+                const found = document.querySelector('.alert.information');
+                const notfound = document.querySelector('.alert.warning');
+                console.log((found || notfound));
+                return !!(found || notfound) ? found ? "found" : "not found" : "";
+            });
+            console.log("dpsCheck -> " + (!!loaded ? loaded : "waiting"))
+            await sleep(500);
+            waitLoops++;
+        }
+
+        return loaded;
+    }
 
     const page = await phantomInstance.createPage();
     const status = await page.open('https://www.depositprotection.com/is-my-deposit-protected');
@@ -201,20 +219,11 @@ async function dps(phantomInstance) {
         return "clicked";
     });
 
-    let loaded = false;
     await sleep(500);
 
-    let waitLoops = 0;
-    while (!loaded && waitLoops < 10) {
-        loaded = await page.evaluate(function () {
-            const found = document.querySelector('.alert.information');
-            const notfound = document.querySelector('.alert.warning');
-            console.log((found || notfound));
-            return (found || notfound);
-        });
-        await sleep(500);
-        waitLoops++;
-    }
+    let hasLoaded = await waitForCheckToLoad();
+    console.log(hasLoaded ? "successfully loaded tds deposit check" : "failed to load deposit check");
+
     let checkImageName = 'check-dps-' + imageSuffix;
     let checkRenderResult = await page.render(checkImageName).then(function (input) {
         return input
@@ -228,6 +237,21 @@ async function dps(phantomInstance) {
 async function tds(phantomInstance) {
     let page = await phantomInstance.createPage();
 
+    async function waitForCheckToLoad() {
+        let loaded = false;
+        let waitLoops = 0;
+        while (!loaded && waitLoops < 50) {
+            loaded = await page.evaluate(function () {
+                const notfound = $('p:contains("Based on the information you provided, we could not find a tenancy deposit record that matched")')[0];
+                const found = $('h1:contains("This tenancy deposit is registered")')[0];
+                return !!(found || notfound) ? found ? "found" : "not found" : "";
+            });
+            console.log("tpsCheck -> " + (!!loaded ? loaded : "waiting"))
+            await sleep(500);
+            waitLoops++;
+        }
+        return loaded;
+    }
 
     const status = await page.open('https://www.thedisputeservice.co.uk/is-my-deposit-protected.html');
     console.log("attempting to expand deposit information box");
@@ -291,34 +315,16 @@ async function tds(phantomInstance) {
     console.log(dataRenderResult ? 'File created at [' + dataImageName + ']' : ' failed to screenshot TDS');
 
 
-    page.on('onResourceRequested', function (requestData) {
-        console.info('Requesting', requestData.url)
-    });
-
-    page.on('onResourceRecieved', function (response) {
-        console.info('Requesting', response.url)
-    });
-
     let clickResult = await page.evaluate(function () {
         var submittor = $("input[type='submit']");
         submittor.click();
         return "clicked";
     });
 
-    let hasLoaded = false;
-    waitLoops = 0;
-    while (!hasLoaded && waitLoops < 20) {
-        hasLoaded = await page.evaluate(function () {
-            var notfound = $('div.notification_message');
-            var found = $('fieldset.protected_box.top_protected_box');
-            console.log(found.length + ", " + notfound.length + " -> " + !(found.length || notfound));
-            return !(found.length || notfound);
-        });
-        await sleep(1000);
-        waitLoops++;
-    }
 
-    console.log(hasLoaded ? "successfully loaded deposit check" : "failed to load deposit check");
+    let hasLoaded = await waitForCheckToLoad();
+
+    console.log(hasLoaded ? "successfully loaded tds deposit check" : "failed to load deposit check");
 
     let checkImageName = 'check-tds-' + imageSuffix;
     let checkRenderResult = await page.render(checkImageName).then(function (input) {
